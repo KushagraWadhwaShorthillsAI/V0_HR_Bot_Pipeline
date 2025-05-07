@@ -28,7 +28,6 @@ page = st.sidebar.selectbox("Navigate", [
     "Upload & Process", 
     "Database Management", 
     "Resume Search Engine",
-    "Settings"  # New tab for retriever
 ])
 
 # Initialize session state for tracking job progress
