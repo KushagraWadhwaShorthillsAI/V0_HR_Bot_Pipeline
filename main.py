@@ -16,18 +16,18 @@ from final_retriever import run_retriever  # Retriever engine
 
 # Set page configuration
 st.set_page_config(
-    page_title="Resume Processor & Search",
+    page_title="HR Resume Bot",
     page_icon="📄",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # Sidebar for app navigation
-st.sidebar.title("Resume Suite")
+st.sidebar.title("HR Bot Feature Suite")
 page = st.sidebar.radio("Navigate", [
     "Upload & Process", 
     "Database Management", 
-    "Boolean Search Engine",  # New tab for retriever
+    "Candidate Search Engine",  # New tab for retriever
 ])
 
 # Initialize session state for tracking job progress
