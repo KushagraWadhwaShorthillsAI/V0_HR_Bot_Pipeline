@@ -7,3 +7,6 @@ requests
 streamlit
 pymongo
 boolean.py
+wheel
+setuptools
+pillow
