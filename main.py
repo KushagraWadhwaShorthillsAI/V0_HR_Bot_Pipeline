@@ -28,7 +28,6 @@ page = st.sidebar.radio("Navigate", [
     "Upload & Process", 
     "Database Management", 
     "Boolean Search Engine",  # New tab for retriever
-    "Settings"
 ])
 
 # Initialize session state for tracking job progress
@@ -412,48 +411,48 @@ elif page == "Database Management":
     except Exception as e:
         st.error(f"Error connecting to database: {e}")
 
-# # -------------------
-# # Page: Settings
-# # -------------------
-# elif page == "Settings":
-#     st.title("Settings")
-#     st.subheader("API Keys")
-#     llama_key = st.text_input("LLAMA_CLOUD_API_KEY", value=st.secrets["azure_openai"]["api_key"], type="password")
-#     azure_key = st.text_input("AZURE_OPENAI_API_KEY", value=st.secrets["azure_openai"]["endpoint"], type="password")
-#     azure_endpoint = st.text_input("AZURE_OPENAI_ENDPOINT", value=st.secrets["azure_openai"]["deployment"])# noqa
-#     azure_deployment = st.text_input("AZURE_OPENAI_DEPLOYMENT", value=st.secrets["azure_openai"].get("api_version", "2024-08-01-preview"))
+# -------------------
+# Page: Settings
+# -------------------
+elif page == "Settings":
+    st.title("Settings")
+    st.subheader("API Keys")
+    llama_key = st.text_input("LLAMA_CLOUD_API_KEY", value=st.secrets["azure_openai"]["api_key"], type="password")
+    azure_key = st.text_input("AZURE_OPENAI_API_KEY", value=st.secrets["azure_openai"]["endpoint"], type="password")
+    azure_endpoint = st.text_input("AZURE_OPENAI_ENDPOINT", value=st.secrets["azure_openai"]["deployment"])# noqa
+    azure_deployment = st.text_input("AZURE_OPENAI_DEPLOYMENT", value=st.secrets["azure_openai"].get("api_version", "2024-08-01-preview"))
 
-#     st.subheader("MongoDB Settings")
-#     mongo_uri = st.text_input("MongoDB URI", value=st.secrets["mongo"]["uri"], type="password")
-#     db_name = st.text_input("Database Name", value=st.secrets["mongo"]["db_name"])
-#     collection_name = st.text_input("Collection Name", value=st.secrets["mongo"]["collection_name"])
+    st.subheader("MongoDB Settings")
+    mongo_uri = st.text_input("MongoDB URI", value=st.secrets["mongo"]["uri"], type="password")
+    db_name = st.text_input("Database Name", value=st.secrets["mongo"]["db_name"])
+    collection_name = st.text_input("Collection Name", value=st.secrets["mongo"]["collection_name"])
 
-#     if st.button("Save Settings"):
-#         secrets_content = f"""
-# [LLAMA_CLOUD_API_KEY] = "{llama_key}"
-# [AZURE_OPENAI_API_KEY] = "{azure_key}"
-# [AZURE_OPENAI_ENDPOINT] = "{azure_endpoint}"
-# [AZURE_OPENAI_DEPLOYMENT] = "{azure_deployment}"
-# [MONGO_URI] = "{mongo_uri}"
-# [DB_NAME] = "{db_name}"
-# [COLLECTION_NAME] = "{collection_name}"
-# """
-#         secrets_path = Path(".streamlit/secrets.toml")
-#         secrets_path.parent.mkdir(parents=True, exist_ok=True)
-#         secrets_path.write_text(secrets_content)
-#         st.success("Settings saved to secrets.toml!")
+    if st.button("Save Settings"):
+        secrets_content = f"""
+[LLAMA_CLOUD_API_KEY] = "{llama_key}"
+[AZURE_OPENAI_API_KEY] = "{azure_key}"
+[AZURE_OPENAI_ENDPOINT] = "{azure_endpoint}"
+[AZURE_OPENAI_DEPLOYMENT] = "{azure_deployment}"
+[MONGO_URI] = "{mongo_uri}"
+[DB_NAME] = "{db_name}"
+[COLLECTION_NAME] = "{collection_name}"
+"""
+        secrets_path = Path(".streamlit/secrets.toml")
+        secrets_path.parent.mkdir(parents=True, exist_ok=True)
+        secrets_path.write_text(secrets_content)
+        st.success("Settings saved to secrets.toml!")
 
-#     st.subheader("Create config.py")
-#     if st.button("Generate config.py"):
-#         config_content = f"""# config.py
-# # MongoDB settings
-# MONGO_URI = "{mongo_uri}"
-# DB_NAME = "{db_name}"
-# COLLECTION_NAME = "{collection_name}"
-# """
-#         with open("config.py", "w") as f:
-#             f.write(config_content)
-#         st.success("config.py created!")
-#         st.code(config_content, language="python")
+    st.subheader("Create config.py")
+    if st.button("Generate config.py"):
+        config_content = f"""# config.py
+# MongoDB settings
+MONGO_URI = "{mongo_uri}"
+DB_NAME = "{db_name}"
+COLLECTION_NAME = "{collection_name}"
+"""
+        with open("config.py", "w") as f:
+            f.write(config_content)
+        st.success("config.py created!")
+        st.code(config_content, language="python")
 
     
