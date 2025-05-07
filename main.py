@@ -4,9 +4,7 @@ import json
 import tempfile
 from pathlib import Path
 import asyncio
-import time
 from datetime import datetime
-import uuid
 
 # Import your existing modules
 from llama_resume_parser import ResumeParser
@@ -238,6 +236,11 @@ if page == "Resume Search Engine":
 # -------------------
 elif page == "Upload & Process":
     st.title("Upload & Process Resumes")
+    st.markdown("""
+Upload and process raw resume files in PDF or DOCX format.  
+This page extracts resume content, standardizes it into structured JSON, and prepares it for database upload.
+""")
+
     uploaded_files = st.file_uploader(
         "Upload Resume Files", 
         type=["pdf", "docx"], 
@@ -333,6 +336,11 @@ elif page == "Upload & Process":
 # -------------------
 elif page == "Database Management":
     st.title("Resume Database Management")
+    st.markdown("""
+Upload and process raw resume files in PDF or DOCX format.  
+This page extracts resume content, standardizes it into structured JSON, and prepares it for database upload.
+""")
+
     try:
         db_manager = ResumeDBManager()
         st.subheader("Query Resumes")
