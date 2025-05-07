@@ -24,10 +24,11 @@ st.set_page_config(
 
 # Sidebar for app navigation
 st.sidebar.title("HR Bot Feature Suite")
-page = st.sidebar.radio("Navigate", [
+page = st.sidebar.selectbox("Navigate", [
     "Upload & Process", 
     "Database Management", 
-    "Boolean Search Engine",  # New tab for retriever
+    "Resume Search Engine",
+    "Settings"  # New tab for retriever
 ])
 
 # Initialize session state for tracking job progress
