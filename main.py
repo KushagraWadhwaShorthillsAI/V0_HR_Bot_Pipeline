@@ -16,7 +16,7 @@ from final_retriever import run_retriever  # Retriever engine
 
 # Set page configuration
 st.set_page_config(
-    page_title="Resume Processor & Search",
+    page_title="HR Resume Bot",
     page_icon="📄",
     layout="wide",
     initial_sidebar_state="expanded"
