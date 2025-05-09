@@ -20,13 +20,44 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Sidebar for app navigation
+# Sidebar for app navigation and explanations
 st.sidebar.title("HR Bot Feature Suite")
 page = st.sidebar.selectbox("Navigate", [
     "Upload & Process", 
     "Database Management", 
     "Resume Search Engine",
 ])
+
+# Add explanatory text based on selected page
+if page == "Upload & Process":
+    st.sidebar.markdown("""
+    ### 📤 Upload & Process
+    This page allows you to:
+    1. Upload multiple resume files (PDF/DOCX)
+    2. Automatically process them through our pipeline:
+       - Parse and extract content
+       - Standardize the format
+       - Store in database
+    3. Preview processed resumes
+    """)
+elif page == "Database Management":
+    st.sidebar.markdown("""
+    ### 💾 Database Management
+    This page enables you to:
+    1. View all stored resumes
+    2. Search resumes by specific fields
+    3. View detailed resume information
+    4. Manage the resume database
+    """)
+elif page == "Resume Search Engine":
+    st.sidebar.markdown("""
+    ### 🔍 Resume Search Engine
+    This page provides:
+    1. Advanced search capabilities
+    2. Boolean search queries
+    3. Filter and sort options
+    4. Detailed resume matching
+    """)
 
 # Initialize session state for tracking job progress
 if "processing_complete" not in st.session_state:
@@ -235,14 +266,19 @@ if page == "Resume Search Engine":
 # Page: Upload & Process Resumes
 # -------------------
 elif page == "Upload & Process":
-    st.title("Upload & Process Resumes")
+    st.title("📄 Resume Processing Pipeline")
     st.markdown("""
-Upload and process raw resume files in PDF or DOCX format.  
-This page extracts resume content, standardizes it into structured JSON, and prepares it for database upload.
-""")
+    ### Streamlined Resume Processing
+    Upload your resume files and let our AI-powered pipeline handle the rest. The system will automatically:
+    1. Extract and parse content from your resumes
+    2. Standardize the information into a consistent format
+    3. Store the processed data in our database
+    
+    Supported formats: PDF, DOCX
+    """)
 
     uploaded_files = st.file_uploader(
-        "Upload Resume Files", 
+        "📤 Upload Resume Files", 
         type=["pdf", "docx"], 
         accept_multiple_files=True,
         key="resume_uploader",
@@ -265,46 +301,50 @@ This page extracts resume content, standardizes it into structured JSON, and pre
             st.session_state.standardized_files = []
             st.session_state.uploaded_files = []
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        if st.button("1. Parse Resumes", disabled=not uploaded_files):
-            with st.spinner("Parsing resumes..."):
+    # Combined processing button
+    if uploaded_files:
+        if st.button("🚀 Process Resumes", type="primary", use_container_width=True):
+            with st.spinner("Processing resumes..."):
+                # Step 1: Parse
                 process_uploaded_files(uploaded_files)
-    with col2:
-        if st.button("2. Standardize", disabled=not st.session_state.processing_complete):
-            with st.spinner("Standardizing resumes..."):
+                st.success("✅ Parsing complete!")
+                
+                # Step 2: Standardize
                 asyncio.run(standardize_resumes())
-    with col3:
-        if st.button("3. Upload to MongoDB", disabled=not st.session_state.standardizing_complete):
-            with st.spinner("Uploading to MongoDB..."):
+                st.success("✅ Standardization complete!")
+                
+                # Step 3: Upload to MongoDB
                 upload_to_mongodb()
+                st.success("✅ Database upload complete!")
+    else:
+        st.info("👆 Please upload resume files to begin processing")
 
     # Display processing status
-    st.subheader("Processing Status")
+    st.subheader("📊 Processing Status")
     status_col1, status_col2, status_col3 = st.columns(3)
     with status_col1:
         if st.session_state.processing_complete:
-            st.success(f"Parsed {len(st.session_state.processed_files)} files")
+            st.success(f"✅ Parsed {len(st.session_state.processed_files)} files")
         else:
-            st.info("Waiting for parsing...")
+            st.info("⏳ Waiting for parsing...")
     with status_col2:
         if st.session_state.standardizing_complete:
-            st.success(f"Standardized {len(st.session_state.standardized_files)} files")
+            st.success(f"✅ Standardized {len(st.session_state.standardized_files)} files")
         elif st.session_state.processing_complete:
-            st.info("Ready to standardize")
+            st.info("⏳ Ready to standardize")
         else:
-            st.info("Waiting for parsing...")
+            st.info("⏳ Waiting for parsing...")
     with status_col3:
         if st.session_state.db_upload_complete:
-            st.success(f"Uploaded {len(st.session_state.uploaded_files)} files to MongoDB")
+            st.success(f"✅ Uploaded {len(st.session_state.uploaded_files)} files to MongoDB")
         elif st.session_state.standardizing_complete:
-            st.info("Ready to upload to MongoDB")
+            st.info("⏳ Ready to upload to MongoDB")
         else:
-            st.info("Waiting for standardization...")
+            st.info("⏳ Waiting for standardization...")
 
     # Display file previews if processed
     if st.session_state.standardized_files:
-        st.subheader("Preview Standardized Resumes")
+        st.subheader("👀 Preview Processed Resumes")
         selected_file = st.selectbox(
             "Select a resume to preview", 
             options=[f.name for f in st.session_state.standardized_files]
@@ -313,21 +353,26 @@ This page extracts resume content, standardizes it into structured JSON, and pre
             file_path = standardized_dir / selected_file
             with open(file_path, "r", encoding="utf-8") as f:
                 resume_data = json.load(f)
-            col1, col2 = st.columns(2)
+            
+            # Create a more visually appealing preview
+            st.markdown("---")
+            col1, col2 = st.columns([1, 2])
             with col1:
-                st.markdown(f"### {resume_data.get('name', 'Unknown Name')}")
-                st.markdown(f"📧 {resume_data.get('email', 'No email')}")
-                st.markdown(f"📱 {resume_data.get('phone', 'No phone')}")
-                st.markdown(f"📍 {resume_data.get('location', 'No location')}")
+                st.markdown(f"### 👤 {resume_data.get('name', 'Unknown Name')}")
+                st.markdown(f"📧 **Email:** {resume_data.get('email', 'No email')}")
+                st.markdown(f"📱 **Phone:** {resume_data.get('phone', 'No phone')}")
+                st.markdown(f"📍 **Location:** {resume_data.get('location', 'No location')}")
                 if resume_data.get('skills'):
-                    st.markdown("### Skills")
+                    st.markdown("### 🛠️ Skills")
                     st.write(", ".join(resume_data.get('skills', [])))
             with col2:
                 if resume_data.get('experience'):
-                    st.markdown("### Experience")
+                    st.markdown("### 💼 Experience")
                     for exp in resume_data.get('experience', [])[:2]:
-                        st.markdown(f"**{exp.get('title')}** at {exp.get('company')}")
-                        st.markdown(f"*{exp.get('duration', 'N/A')}*")
+                        st.markdown(f"""
+                        **{exp.get('title')}** at {exp.get('company')}
+                        *{exp.get('duration', 'N/A')}*
+                        """)
             if st.checkbox("Show Raw JSON"):
                 st.json(resume_data)
 
@@ -335,20 +380,21 @@ This page extracts resume content, standardizes it into structured JSON, and pre
 # Page: Database Management
 # -------------------
 elif page == "Database Management":
-    st.title("Resume Database Management")
+    st.title("💾 Resume Database Management")
     st.markdown("""
-Upload and process raw resume files in PDF or DOCX format.  
-This page extracts resume content, standardizes it into structured JSON, and prepares it for database upload.
-""")
+    ### Database Operations
+    Manage and query your resume database with powerful search capabilities.
+    """)
 
     try:
         db_manager = ResumeDBManager()
-        st.subheader("Query Resumes")
-        query_type = st.radio("Query Type", ["All Resumes", "Search by Field"])
-        if query_type == "All Resumes":
+        st.subheader("🔍 Query Resumes")
+        query_type = st.radio("Select Query Type", ["View All Resumes", "Search by Field"])
+        
+        if query_type == "View All Resumes":
             if "all_resumes_results" not in st.session_state:
                 st.session_state.all_resumes_results = []
-            if st.button("Fetch All Resumes") or st.session_state.all_resumes_results:
+            if st.button("📥 Fetch All Resumes", use_container_width=True) or st.session_state.all_resumes_results:
                 with st.spinner("Fetching resumes..."):
                     if not st.session_state.all_resumes_results:
                         st.session_state.all_resumes_results = db_manager.find({})
@@ -363,31 +409,39 @@ This page extracts resume content, standardizes it into structured JSON, and pre
                                 "Email": res.get("email", "N/A"),
                                 "Skills": ", ".join(res.get("skills", [])[:3]) + ("..." if len(res.get("skills", [])) > 3 else "")
                             })
-                        st.dataframe(resume_data)
+                        st.dataframe(resume_data, use_container_width=True)
+                        
                         resume_options = []
                         st.session_state.resume_display_map = {}
                         for res in results:
-                            display_text = f"{res.get('name', 'Unknown')} - {res.get('email', 'No email')} ({res.get('_id', 'N/A')})"
+                            display_text = f"{res.get('name', 'Unknown')} - {res.get('email', 'No email')}"
                             resume_options.append(display_text)
                             st.session_state.resume_display_map[display_text] = res
+                        
                         selected_resume_option = st.selectbox(
                             "Select resume to view details", 
                             options=resume_options if resume_options else ["No resumes found"],
                             key="resume_selector"
                         )
+                        
                         if selected_resume_option and "No resumes found" not in selected_resume_option:
                             selected_resume = st.session_state.resume_display_map.get(selected_resume_option)
                             if selected_resume:
                                 st.json(selected_resume)
                             else:
                                 st.error("Could not find the selected resume. Please try again.")
+        
         elif query_type == "Search by Field":
-            search_field = st.selectbox(
-                "Search Field", 
-                ["name", "email", "skills", "experience.company", "education.institution"]
-            )
-            search_value = st.text_input("Search Value")
-            if st.button("Search"):
+            col1, col2 = st.columns(2)
+            with col1:
+                search_field = st.selectbox(
+                    "Search Field", 
+                    ["name", "email", "skills", "experience.company", "education.institution"]
+                )
+            with col2:
+                search_value = st.text_input("Search Value")
+            
+            if st.button("🔍 Search", use_container_width=True):
                 if search_value:
                     query = {}
                     if search_field == "skills":
@@ -396,6 +450,7 @@ This page extracts resume content, standardizes it into structured JSON, and pre
                         query = {search_field: {"$regex": search_value, "$options": "i"}}
                     else:
                         query = {search_field: {"$regex": search_value, "$options": "i"}}
+                    
                     with st.spinner("Searching..."):
                         results = db_manager.find(query)
                         if results:
@@ -405,11 +460,13 @@ This page extracts resume content, standardizes it into structured JSON, and pre
                                 display_text = f"{res.get('name', 'Unknown')} - {res.get('email', 'No email')}"
                                 search_options.append(display_text)
                                 search_map[display_text] = res
+                            
                             selected_search_result = st.selectbox(
                                 "Select resume to view details", 
                                 options=search_options,
                                 key="search_selector"
                             )
+                            
                             if selected_search_result:
                                 st.json(search_map[selected_search_result])
                         else:
