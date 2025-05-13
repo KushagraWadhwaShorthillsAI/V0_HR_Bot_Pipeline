@@ -4,6 +4,46 @@ import streamlit as st
 from pymongo import MongoClient
 from boolean.boolean import BooleanAlgebra, Symbol, AND, OR
 import config
+import openai
+
+# ------------------- Azure OpenAI Configuration -------------------
+
+AZURE_OPENAI_API_KEY = st.secrets["azure_openai"]["api_key"]
+AZURE_OPENAI_ENDPOINT = st.secrets["azure_openai"]["endpoint"]
+AZURE_OPENAI_DEPLOYMENT = st.secrets["azure_openai"]["deployment"]
+AZURE_OPENAI_API_VERSION = st.secrets["azure_openai"]["api_version"]
+
+# Create a reusable OpenAI client instance (Azure)
+openai_client = openai.AzureOpenAI(
+    api_key=AZURE_OPENAI_API_KEY,
+    api_version=AZURE_OPENAI_API_VERSION,
+    azure_endpoint=AZURE_OPENAI_ENDPOINT
+)
+
+def convert_natural_language_to_boolean(nl_query):
+    prompt = f"""Convert the following natural language query into a Boolean search query.
+        Example 1:
+        Input: Show me candidates skilled in Java and Spring Boot
+        Output: java and springboot
+
+        Example 2:
+        Input: Find someone who knows Python or data science
+        Output: python or datascience
+
+        Example 3:
+        Input: I want profiles with either machine learning or deep learning but not statistics
+        Output: (machinelearning or deeplearning) and not statistics
+
+        Now, convert this:
+        Input: {nl_query}
+        Output:"""
+
+    response = openai_client.chat.completions.create(
+        model=AZURE_OPENAI_DEPLOYMENT,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0
+    )
+    return response.choices[0].message.content.strip()
 
 # Boolean parser class
 class BooleanSearchParser:
@@ -12,22 +52,25 @@ class BooleanSearchParser:
         self.quoted_phrases = {}
         self.placeholder_counter = 0
 
+    def convert_nl_query(self, query):
+        return convert_natural_language_to_boolean(query)
+
     def preprocess_query(self, query):
-        """Extract quoted phrases and replace them with placeholders"""
+        query = self.convert_nl_query(query)
+
         def replace_quoted(match):
             phrase = match.group(1)
             placeholder = f"QUOTED_PHRASE_{self.placeholder_counter}"
             self.quoted_phrases[placeholder] = phrase
             self.placeholder_counter += 1
             return placeholder
-        
-        # Replace quoted phrases with placeholders
+
         processed_query = re.sub(r'"([^"]+)"', replace_quoted, query)
         return processed_query
 
     def parse_query(self, query):
         try:
-            self.quoted_phrases   = {}
+            self.quoted_phrases = {}
             self.placeholder_counter = 0
             # First extract quoted phrases
             processed_query = self.preprocess_query(query)
@@ -36,11 +79,9 @@ class BooleanSearchParser:
         except Exception as e:
             raise ValueError(f"Invalid Boolean query: {e}")
 
-# Normalizer
-
 def normalize(text: str) -> str:
     """Lowercase, split CamelCase, remove noise, then inject merged bigrams & halves."""
-    # 1) Split CamelCase: “HuggingFace” → “Hugging Face”
+    # 1) Split CamelCase: "HuggingFace" → "Hugging Face"
     text = re.sub(r'([a-z])([A-Z])', r'\1 \2', text)
 
     # 2) Lowercase & basic cleanup
@@ -72,7 +113,6 @@ def normalize(text: str) -> str:
     # 6) Normalize whitespace
     return re.sub(r'\s+', ' ', text).strip()
 
-# Flattener
 def flatten_json(obj) -> str:
     parts = []
     def recurse(x):
@@ -87,8 +127,6 @@ def flatten_json(obj) -> str:
     recurse(obj)
     return " ".join(parts)
 
-# Evaluator
-
 def evaluate_expression(expr, text, quoted_phrases=None):
     """Recursively evaluate Boolean expression against text, with substring fallback."""
     quoted_phrases = quoted_phrases or {}
@@ -96,12 +134,12 @@ def evaluate_expression(expr, text, quoted_phrases=None):
     if isinstance(expr, Symbol):
         term = str(expr.obj).lower()
         
-        # 1) exact‐phrase placeholders
+        # 1) exact-phrase placeholders
         if term.startswith("QUOTED_PHRASE_") and term in quoted_phrases:
             phrase = quoted_phrases[term].lower()
             return phrase in text
         
-        # 2) word‐boundary match
+        # 2) word-boundary match
         pattern = r'\b' + re.escape(term) + r'\b'
         if re.search(pattern, text):
             return True
@@ -122,7 +160,50 @@ def display_json(data):
     
     st.json(data)
 
-# Main Streamlit App
+def normalize_boolean_operators(query):
+    # Replace lowercase boolean operators with uppercase versions (whole words only)
+    query = re.sub(r'\band\b', 'AND', query, flags=re.IGNORECASE)
+    query = re.sub(r'\bor\b', 'OR', query, flags=re.IGNORECASE)
+    query = re.sub(r'\bnot\b', 'NOT', query, flags=re.IGNORECASE)
+    return query
+
+def search_based_on_keyword_length(query, docs):
+    """
+    Search based on keyword length:
+    - If keyword length > 4: Use boolean search
+    - If keyword length <= 4: Use Linux-based word search
+    """
+    # Split query into individual keywords
+    keywords = query.lower().split()
+    
+    # Check if any keyword is longer than 4 characters
+    use_boolean = any(len(keyword) > 4 for keyword in keywords)
+    
+    if use_boolean:
+        # Use existing boolean search logic
+        bsp = BooleanSearchParser()
+        try:
+            parsed_query = bsp.parse_query(query)
+            matching_docs = []
+            for doc in docs:
+                raw_text = flatten_json(doc)
+                norm_text = normalize(raw_text)
+                if evaluate_expression(parsed_query, norm_text, bsp.quoted_phrases):
+                    matching_docs.append(doc)
+            return matching_docs
+        except Exception as e:
+            st.error(f"❌ Error in boolean search: {e}")
+            return []
+    else:
+        # Use Linux-based word search
+        matching_docs = []
+        for doc in docs:
+            raw_text = flatten_json(doc).lower()
+            # Check if all keywords are present in the text
+            if all(keyword in raw_text for keyword in keywords):
+                matching_docs.append(doc)
+        return matching_docs
+
 def main():
     st.set_page_config(
         page_title="HR Bot Resume Search", 
@@ -174,6 +255,9 @@ def main():
         
         st.markdown("### Search Filters")
         search_query = st.text_input("🧠 Enter your search query:", placeholder="e.g., Python AND MachineLearning")
+        search_query = convert_natural_language_to_boolean(search_query)
+        if search_query:
+            search_query = normalize_boolean_operators(search_query)
         
         with st.expander("ℹ️ How to Search ??"):
             st.markdown("""
@@ -195,47 +279,12 @@ def main():
             💡 _Avoid spaces between multi-word skills unless using Boolean logic explicitly._
             """)
 
-        
-        st.divider()
-        st.markdown("### About")
-        st.markdown("**Resume Search** helps you quickly find the most relevant candidates by matching specific keywords and phrases in their profiles. It supports powerful **Boolean search capabilities**, allowing you to combine skills, exclude terms, or group keywords for highly targeted filtering.")
-
     # Main content
     st.title("🔎 Looking for some candidates?")
     
     if not search_query:
         st.info("👈 Enter a search query in the sidebar to begin searching.")
-        
-        # Sample placeholders when no search is performed
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("""
-            ### 🚀 Features
-            - **Boolean Logic**: Complex search queries
-            - **Fast Search**: Optimized algorithm
-            - **Detailed View**: See complete candidate profiles
-            - **User-friendly**: Intuitive interface
-            """)
-        with col2:
-            st.markdown("""
-            ### 💡 Example Queries
-            - `Python AND (Django OR Flask)`
-            - `JavaScript AND React`
-            - `"Machine Learning" AND (Python OR R)`
-            - `AWS OR Azure`
-            """)
         return
-
-    # Parse Boolean Query
-    bsp = BooleanSearchParser()
-    if 'AND' in search_query or 'OR' in search_query or 'NOT' in search_query or '"' in search_query:
-        try:
-            parsed_query = bsp.parse_query(search_query)
-        except Exception as e:
-            st.error(f"❌ Error parsing query: {e}")
-            return
-    else:
-        parsed_query = Symbol(search_query.lower())
 
     # Connect to MongoDB
     try:
@@ -253,18 +302,8 @@ def main():
     progress_bar = st.progress(0)
     
     # Store full documents for matched candidates
-    matching_docs = []
+    matching_docs = search_based_on_keyword_length(search_query, docs)
     
-    for idx, doc in enumerate(docs):
-        try:
-            raw_text = flatten_json(doc)
-            norm_text = normalize(raw_text)
-            if evaluate_expression(parsed_query, norm_text,bsp.quoted_phrases):
-                matching_docs.append(doc)
-        except Exception as e:
-            st.warning(f"⚠️ Error processing document {doc.get('_id')}: {e}")
-        progress_bar.progress((idx + 1) / len(docs))
-
     progress_bar.empty()
 
     # Display results
