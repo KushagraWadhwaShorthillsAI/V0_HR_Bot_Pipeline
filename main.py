@@ -448,6 +448,8 @@ elif page == "Upload & Process":
 # -------------------
 # Page: Database Management
 # -------------------
+# ...existing code...
+
 elif page == "Database Management":
     st.title("💾 Resume Database Management")
     st.markdown("""
@@ -497,6 +499,33 @@ elif page == "Database Management":
                             selected_resume = st.session_state.resume_display_map.get(selected_resume_option)
                             if selected_resume:
                                 st.json(selected_resume)
+
+                                # Add delete button with confirmation logic
+                                if "delete_confirmation" not in st.session_state:
+                                    st.session_state.delete_confirmation = False
+
+                                if not st.session_state.delete_confirmation:
+                                    if st.button("🗑️ Delete Resume", key="delete_button"):
+                                        st.session_state.delete_confirmation = True
+                                else:
+                                    # Simulate a pop-up-like experience
+                                    with st.container():
+                                        st.error("⚠️ Are you sure you want to delete this resume? This action cannot be undone.")
+                                        col1, col2 = st.columns(2)
+                                        with col1:
+                                            if st.button("Yes, Delete", key="confirm_delete_button"):
+                                                try:
+                                                    db_manager.delete_resume({"_id": selected_resume["_id"]})
+                                                    st.success(f"✅ Deleted resume: {selected_resume.get('name', 'Unknown')}")
+                                                    # Refresh the results after deletion
+                                                    st.session_state.all_resumes_results = db_manager.find({})
+                                                    st.session_state.delete_confirmation = False  # Reset confirmation state
+                                                except Exception as e:
+                                                    st.error(f"Error deleting resume: {e}")
+                                        with col2:
+                                            if st.button("Cancel", key="cancel_delete_button"):
+                                                st.info("Deletion canceled.")
+                                                st.session_state.delete_confirmation = False  # Reset confirmation state
                             else:
                                 st.error("Could not find the selected resume. Please try again.")
         
@@ -551,11 +580,37 @@ elif page == "Database Management":
                     selected_resume = st.session_state.search_map.get(selected_search_result)
                     if selected_resume:
                         st.json(selected_resume)
+
+                        # Add delete button with confirmation logic
+                        if "delete_confirmation" not in st.session_state:
+                            st.session_state.delete_confirmation = False
+
+                        if not st.session_state.delete_confirmation:
+                            if st.button("🗑️ Delete Resume", key="delete_button"):
+                                st.session_state.delete_confirmation = True
+                        else:
+                            # Simulate a pop-up-like experience
+                            with st.container():
+                                st.error("⚠️ Are you sure you want to delete this resume? This action cannot be undone.")
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    if st.button("Yes, Delete", key="confirm_delete_button"):
+                                        try:
+                                            db_manager.delete_resume({"_id": selected_resume["_id"]})
+                                            st.success(f"✅ Deleted resume: {selected_resume.get('name', 'Unknown')}")
+                                            # Refresh the results after deletion
+                                            st.session_state.all_resumes_results = db_manager.find({})
+                                            st.session_state.delete_confirmation = False  # Reset confirmation state
+                                        except Exception as e:
+                                            st.error(f"Error deleting resume: {e}")
+                                with col2:
+                                    if st.button("Cancel", key="cancel_delete_button"):
+                                        st.info("Deletion canceled.")
+                                        st.session_state.delete_confirmation = False  # Reset confirmation state
                     else:
                         st.error("Could not find the selected resume. Please try again.")
     except Exception as e:
         st.error(f"Error connecting to database: {e}")
-
 # # -------------------
 # # Page: Settings
 # # -------------------
