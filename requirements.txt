@@ -10,3 +10,7 @@ boolean.py
 wheel
 setuptools
 pillow
+python-dotenv
+pdf2image
+pytesseract
+opencv-python
