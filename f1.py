@@ -2,6 +2,7 @@ import openai
 import re
 # ------------------- Azure OpenAI Configuration -------------------
 
+
 AZURE_OPENAI_API_KEY = "3xPDwbMLxnRrhsGke6eymlGOr4poo5h3jmHH5jZgZRzFuw1kwLXTJQQJ99AJACYeBjFXJ3w3AAABACOGiocA"
 AZURE_OPENAI_ENDPOINT = "https://us-tax-law-rag-demo.openai.azure.com/"
 AZURE_OPENAI_DEPLOYMENT = "gpt-4o-mini"
