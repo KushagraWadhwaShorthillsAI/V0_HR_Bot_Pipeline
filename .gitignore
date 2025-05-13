@@ -1,4 +1,6 @@
 .env
 secrets2.txt
-__pycache__
-.hrbot
+__pycache__/
+*.pyc
+.hrbot/
+.streamlit/
