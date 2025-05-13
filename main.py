@@ -262,6 +262,7 @@ if page == "Resume Search Engine":
         run_retriever()
     finally:
         st.set_page_config = original_spc
+
 # -------------------
 # Page: Upload & Process Resumes
 # -------------------
@@ -275,7 +276,7 @@ elif page == "Upload & Process":
     3. Store the processed data in our database
     
     Supported formats: PDF, DOCX
-    """)
+""")
 
     uploaded_files = st.file_uploader(
         "📤 Upload Resume Files", 
@@ -384,7 +385,7 @@ elif page == "Database Management":
     st.markdown("""
     ### Database Operations
     Manage and query your resume database with powerful search capabilities.
-    """)
+""")
 
     try:
         db_manager = ResumeDBManager()
@@ -435,9 +436,9 @@ elif page == "Database Management":
             col1, col2 = st.columns(2)
             with col1:
                 search_field = st.selectbox(
-                    "Search Field", 
-                    ["name", "email", "skills", "experience.company", "education.institution"]
-                )
+                "Search Field", 
+                ["name", "email", "skills", "experience.company", "education.institution"]
+            )
             with col2:
                 search_value = st.text_input("Search Value")
             
