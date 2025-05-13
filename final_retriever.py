@@ -40,7 +40,7 @@ class BooleanSearchParser:
 
 def normalize(text: str) -> str:
     """Lowercase, split CamelCase, remove noise, then inject merged bigrams & halves."""
-    # 1) Split CamelCase: “HuggingFace” → “Hugging Face”
+    # 1) Split CamelCase: "HuggingFace" → "Hugging Face"
     text = re.sub(r'([a-z])([A-Z])', r'\1 \2', text)
 
     # 2) Lowercase & basic cleanup
@@ -49,10 +49,9 @@ def normalize(text: str) -> str:
     text = re.sub(r'\S+@\S+', '', text)
     text = re.sub(r'https?://\S+|www\.\S+', '', text)
 
-    # 3) Capture quoted phrases in the _source text_ and append the no-space form
-    quoted_phrases = re.findall(r'"([^"]+)"', text)
-    for phrase in quoted_phrases:
-        text += " " + phrase.replace(" ", "")
+    # 3) Handle multi-word keywords by preserving spaces
+    # First, store the original text with spaces
+    original_text = text
 
     # 4) Strip quotation marks, remove symbols
     text = text.replace('"', '')
@@ -69,8 +68,57 @@ def normalize(text: str) -> str:
             mid = len(tok) // 2
             text += f" {tok[:mid]} {tok[mid:]}"
 
-    # 6) Normalize whitespace
-    return re.sub(r'\s+', ' ', text).strip()
+    # 6) Normalize whitespace and ensure single spaces
+    text = re.sub(r'\s+', ' ', text).strip()
+    
+    # 7) Remove duplicate words
+    words = text.split()
+    unique_words = []
+    seen_words = set()
+    for word in words:
+        if word not in seen_words:
+            seen_words.add(word)
+            unique_words.append(word)
+    
+    # 8) Add back the original text with spaces to preserve multi-word matches
+    text = ' '.join(unique_words) + " " + original_text
+    
+    return text
+
+def process_natural_language_query(query: str) -> str:
+    """Process natural language query to extract keywords and boolean logic."""
+    # Common boolean indicators
+    boolean_indicators = {
+        'and': 'AND',
+        'or': 'OR',
+        'not': 'NOT',
+        'with': 'AND',
+        'without': 'NOT',
+        'plus': 'AND',
+        'minus': 'NOT',
+        'either': 'OR',
+        'both': 'AND',
+        'neither': 'NOT',
+        'but': 'AND',
+        'except': 'NOT'
+    }
+    
+    # Convert to lowercase for processing
+    query = query.lower()
+    
+    # Replace boolean indicators with their operators
+    for indicator, operator in boolean_indicators.items():
+        # Use word boundaries to ensure we're matching whole words
+        query = re.sub(r'\b' + indicator + r'\b', operator, query)
+    
+    # Handle parentheses for grouping
+    # Add parentheses around phrases that should be grouped
+    query = re.sub(r'([^()]+)(?:\s+(?:and|or|not)\s+[^()]+)+', r'(\1)', query)
+    
+    # Clean up extra spaces
+    query = re.sub(r'\s+', ' ', query).strip()
+    
+    return query
 
 # Flattener
 def flatten_json(obj) -> str:
@@ -101,18 +149,49 @@ def evaluate_expression(expr, text, quoted_phrases=None):
             phrase = quoted_phrases[term].lower()
             return phrase in text
         
-        # 2) word‐boundary match
+        # 2) Special handling for short terms (4 or fewer characters)
+        if len(term) <= 4:
+            # For short terms, require exact word boundary match
+            pattern = r'\b' + re.escape(term) + r'\b'
+            return bool(re.search(pattern, text))
+        
+        # 3) For longer terms, use word boundary match
         pattern = r'\b' + re.escape(term) + r'\b'
         if re.search(pattern, text):
             return True
         
-        # 3) fallback: substring
+        # 4) fallback: substring (only for terms longer than 4 characters)
         return term in text
 
     elif isinstance(expr, AND):
-        return all(evaluate_expression(arg, text, quoted_phrases) for arg in expr.args)
+        # For AND operations, ensure all terms are found in different positions
+        found_positions = set()
+        for arg in expr.args:
+            if isinstance(arg, Symbol):
+                term = str(arg.obj).lower()
+                if term.startswith("QUOTED_PHRASE_") and term in quoted_phrases:
+                    phrase = quoted_phrases[term].lower()
+                    pos = text.find(phrase)
+                    if pos == -1:
+                        return False
+                    found_positions.add(pos)
+                else:
+                    pattern = r'\b' + re.escape(term) + r'\b'
+                    match = re.search(pattern, text)
+                    if not match:
+                        return False
+                    found_positions.add(match.start())
+            else:
+                if not evaluate_expression(arg, text, quoted_phrases):
+                    return False
+        return True
+
     elif isinstance(expr, OR):
-        return any(evaluate_expression(arg, text, quoted_phrases) for arg in expr.args)
+        # For OR operations, check if any term matches
+        for arg in expr.args:
+            if evaluate_expression(arg, text, quoted_phrases):
+                return True
+        return False
     
     return False
 
@@ -173,32 +252,44 @@ def main():
         st.title("HR Bot Resume Search")
         
         st.markdown("### Search Filters")
-        search_query = st.text_input("🧠 Enter your search query:", placeholder="e.g., Python AND MachineLearning")
+        search_query = st.text_input("🧠 Enter your search query:", placeholder="e.g., Python AND Machine Learning")
         
         with st.expander("ℹ️ How to Search ??"):
             st.markdown("""
-            ### 🔍 Boolean Search Tips
+            ### 🔍 Search Tips
+            - **Natural Language**: Type queries like "Find candidates with Python and Machine Learning experience"
             - **Simple keyword**: Type keywords directly like `Python`
             - **AND operator**: Match multiple skills: `Python AND Django`
             - **OR operator**: Match alternatives: `JavaScript OR TypeScript`
             - **Grouped logic**: Combine filters using parentheses:  
             e.g., `(Python OR Java) AND (AWS OR Azure)`
-            - **Multi-word skills** (like 2+ word technologies):
-                - Write them without spaces: `MachineLearning`, `HuggingFace`
-                - OR use Boolean grouping: `(Machine AND Learning)`, `(Hugging AND Face)`
-                - ✅ All the following are treated the same:
-                - `MachineLearning`
-                - `machinelearning`
-                - `(Machine AND Learning)`
-                - `HuggingFace`, `huggingface`, `(Hugging AND Face)`
-
-            💡 _Avoid spaces between multi-word skills unless using Boolean logic explicitly._
+            - **Multi-word skills**: Write them naturally with spaces:
+                - `Machine Learning`
+                - `Artificial Intelligence`
+                - `Data Science`
+            - **Boolean operators**: Use AND, OR, NOT to combine terms
+            - **Natural language**: The system understands phrases like:
+                - "Find candidates with Python and Machine Learning"
+                - "Show me developers who know either Java or Python"
+                - "Candidates with AWS but not Azure"
             """)
 
-        
-        st.divider()
-        st.markdown("### About")
-        st.markdown("**Resume Search** helps you quickly find the most relevant candidates by matching specific keywords and phrases in their profiles. It supports powerful **Boolean search capabilities**, allowing you to combine skills, exclude terms, or group keywords for highly targeted filtering.")
+        # Process the query if it's not empty
+        if search_query:
+            # First try natural language processing
+            processed_query = process_natural_language_query(search_query)
+            
+            # If the query contains boolean operators, use boolean search
+            if 'AND' in processed_query or 'OR' in processed_query or 'NOT' in processed_query:
+                try:
+                    bsp = BooleanSearchParser()
+                    parsed_query = bsp.parse_query(processed_query)
+                except Exception as e:
+                    st.error(f"❌ Error parsing query: {e}")
+                    return
+            else:
+                # For simple keyword searches, just use the processed query
+                parsed_query = Symbol(processed_query.lower())
 
     # Main content
     st.title("🔎 Looking for some candidates?")
@@ -226,17 +317,6 @@ def main():
             """)
         return
 
-    # Parse Boolean Query
-    bsp = BooleanSearchParser()
-    if 'AND' in search_query or 'OR' in search_query or 'NOT' in search_query or '"' in search_query:
-        try:
-            parsed_query = bsp.parse_query(search_query)
-        except Exception as e:
-            st.error(f"❌ Error parsing query: {e}")
-            return
-    else:
-        parsed_query = Symbol(search_query.lower())
-
     # Connect to MongoDB
     try:
         with st.spinner("Connecting to database..."):
@@ -252,31 +332,46 @@ def main():
     st.subheader("🔍 Searching resumes...")
     progress_bar = st.progress(0)
     
-    # Store full documents for matched candidates
-    matching_docs = []
+    # Store unique documents using a dictionary with _id as key
+    unique_matching_docs = {}
     
     for idx, doc in enumerate(docs):
         try:
+            doc_id = str(doc.get('_id'))
+            
+            # Skip if we've already processed this document
+            if doc_id in unique_matching_docs:
+                continue
+                
             raw_text = flatten_json(doc)
             norm_text = normalize(raw_text)
-            if evaluate_expression(parsed_query, norm_text,bsp.quoted_phrases):
-                matching_docs.append(doc)
+            
+            # Debug output for search terms
+            if st.session_state.get('debug_search', False):
+                st.write(f"Searching in document {doc_id}:")
+                st.write(f"Normalized text: {norm_text[:200]}...")
+            
+            if evaluate_expression(parsed_query, norm_text, bsp.quoted_phrases):
+                unique_matching_docs[doc_id] = doc
         except Exception as e:
             st.warning(f"⚠️ Error processing document {doc.get('_id')}: {e}")
         progress_bar.progress((idx + 1) / len(docs))
 
     progress_bar.empty()
 
+    # Get list of unique matching documents
+    matching_docs_list = list(unique_matching_docs.values())
+
     # Display results
-    if matching_docs:
-        st.markdown(f"<div class='result-count'>✅ Found {len(matching_docs)} matching candidates</div>", unsafe_allow_html=True)
+    if matching_docs_list:
+        st.markdown(f"<div class='result-count'>✅ Found {len(matching_docs_list)} matching candidates</div>", unsafe_allow_html=True)
         
         # Create tabs for different views
         tab1, tab2 = st.tabs(["Card View", "Table View"])
         
         with tab1:
             # Card view
-            for doc in matching_docs:
+            for doc in matching_docs_list:
                 with st.container():
                     st.markdown(f"""
                     <div class="card">
@@ -301,12 +396,13 @@ def main():
                             skill_text = str(skills)
                         col1.markdown(f"**Skills**: {skill_text}")
                     
-                    # View details button
-                    if col2.button("View Details", key=f"view_{doc.get('_id', idx)}"):
-                        st.session_state[f"show_details_{doc.get('_id', idx)}"] = True
+                    # View details button with unique key
+                    button_key = f"view_{doc.get('_id')}"
+                    if col2.button("View Details", key=button_key):
+                        st.session_state[f"show_details_{doc.get('_id')}"] = True
                     
                     # Show details if button was clicked
-                    if st.session_state.get(f"show_details_{doc.get('_id', idx)}", False):
+                    if st.session_state.get(f"show_details_{doc.get('_id')}", False):
                         with st.expander("📄 Full Resume Details", expanded=True):
                             tabs = st.tabs(["Formatted View", "JSON View"])
                             
@@ -415,7 +511,7 @@ def main():
         with tab2:
             # Table view for comparison
             table_data = []
-            for doc in matching_docs:
+            for doc in matching_docs_list:
                 row = {
                     "Name": doc.get('name', 'Unknown'),
                     "Email": doc.get('email', 'N/A'),
