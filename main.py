@@ -10,6 +10,7 @@ from datetime import datetime
 from llama_resume_parser import ResumeParser
 from standardizer import ResumeStandardizer
 from db_manager import ResumeDBManager
+from OCR_resume_parser import ResumeParserwithOCR
 from final_retriever import run_retriever  # Retriever engine
 
 # Set page configuration
@@ -242,6 +243,71 @@ def upload_to_mongodb():
     status_text.text(f"✅ Uploaded {uploaded_count}/{total_files} resumes to MongoDB")
     st.session_state.db_upload_complete = True
 
+def validate_and_reprocess_resumes(uploaded_files):
+    """Validate standardized resumes and reprocess if 'name' is missing."""
+    st.write("🔍 Validating standardized resumes...")
+    reprocessed_count = 0
+
+    for file_path in st.session_state.standardized_files:
+        try:
+            with open(file_path, encoding="utf-8") as f:
+                resume_data = json.load(f)
+
+            # Check if 'name' is missing
+            if not resume_data.get("name") or len(resume_data.get("name").split()[0]) < 2:
+                st.warning(f"⚠️ Missing 'name' in {file_path.name}. Reprocessing...")
+                reprocessed_count += 1
+
+                # Find the original file in uploaded files
+                original_file_name = file_path.stem  # Remove .json extension
+                original_file = next(
+                    (file for file in uploaded_files if Path(file.name).stem == original_file_name),
+                    None
+                )
+
+                if not original_file:
+                    st.error(f"❌ Original file for {file_path.name} not found in uploaded files.")
+                    continue
+
+                # Save the uploaded file temporarily
+                temp_file_path = temp_dir / original_file.name
+                with open(temp_file_path, "wb") as f:
+                    f.write(original_file.getbuffer())
+
+                # Re-parse the original file
+                parser = ResumeParserwithOCR()
+                parsed_resume = parser.parse_resume(temp_file_path)
+
+                if parsed_resume:
+                    # Save parsed data
+                    parsed_output_path = parsed_dir / f"{original_file_name}.json"
+                    parser.save_to_json(parsed_resume, parsed_output_path)
+
+                    # Re-standardize the parsed data
+                    standardizer = ResumeStandardizer()
+                    content = parsed_resume.get("content", "")
+                    links = parsed_resume.get("links", [])
+                    prompt = standardizer.make_standardizer_prompt(content, links)
+                    raw_response = asyncio.run(standardizer.call_azure_llm(prompt))
+                    cleaned_json = standardizer.clean_llm_response(raw_response)
+                    parsed_json = json.loads(cleaned_json)
+
+                    # Add metadata
+                    parsed_json["timestamp"] = datetime.now().isoformat()
+                    parsed_json["source_file"] = str(temp_file_path)
+                    parsed_json["original_filename"] = original_file.name
+
+                    # Save re-standardized data
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        json.dump(parsed_json, f, indent=2, ensure_ascii=False)
+
+                    st.success(f"✅ Reprocessed and standardized: {file_path.name}")
+                else:
+                    st.error(f"❌ Failed to re-parse {original_file.name}")
+        except Exception as e:
+            st.error(f"Error validating {file_path.name}: {e}")
+
+    st.write(f"🔄 Reprocessed {reprocessed_count} resumes with missing 'name'.")
 
 # Create temp directories for processing
 temp_dir = Path(tempfile.gettempdir()) / "resume_processor"
@@ -313,8 +379,11 @@ elif page == "Upload & Process":
                 # Step 2: Standardize
                 asyncio.run(standardize_resumes())
                 st.success("✅ Standardization complete!")
+
+                # Step 3: Validate and reprocess if necessary
+                validate_and_reprocess_resumes(uploaded_files)
                 
-                # Step 3: Upload to MongoDB
+                # Step 4: Upload to MongoDB
                 upload_to_mongodb()
                 st.success("✅ Database upload complete!")
     else:
@@ -380,6 +449,8 @@ elif page == "Upload & Process":
 # -------------------
 # Page: Database Management
 # -------------------
+# ...existing code...
+
 elif page == "Database Management":
     st.title("💾 Resume Database Management")
     st.markdown("""
@@ -429,6 +500,33 @@ elif page == "Database Management":
                             selected_resume = st.session_state.resume_display_map.get(selected_resume_option)
                             if selected_resume:
                                 st.json(selected_resume)
+
+                                # Add delete button with confirmation logic
+                                if "delete_confirmation" not in st.session_state:
+                                    st.session_state.delete_confirmation = False
+
+                                if not st.session_state.delete_confirmation:
+                                    if st.button("🗑️ Delete Resume", key="delete_button"):
+                                        st.session_state.delete_confirmation = True
+                                else:
+                                    # Simulate a pop-up-like experience
+                                    with st.container():
+                                        st.error("⚠️ Are you sure you want to delete this resume? This action cannot be undone.")
+                                        col1, col2 = st.columns(2)
+                                        with col1:
+                                            if st.button("Yes, Delete", key="confirm_delete_button"):
+                                                try:
+                                                    db_manager.delete_resume({"_id": selected_resume["_id"]})
+                                                    st.success(f"✅ Deleted resume: {selected_resume.get('name', 'Unknown')}")
+                                                    # Refresh the results after deletion
+                                                    st.session_state.all_resumes_results = db_manager.find({})
+                                                    st.session_state.delete_confirmation = False  # Reset confirmation state
+                                                except Exception as e:
+                                                    st.error(f"Error deleting resume: {e}")
+                                        with col2:
+                                            if st.button("Cancel", key="cancel_delete_button"):
+                                                st.info("Deletion canceled.")
+                                                st.session_state.delete_confirmation = False  # Reset confirmation state
                             else:
                                 st.error("Could not find the selected resume. Please try again.")
         
@@ -456,27 +554,64 @@ elif page == "Database Management":
                         results = db_manager.find(query)
                         if results:
                             st.success(f"Found {len(results)} matching resumes")
-                            search_options, search_map = [], {}
+                            search_options = []
+                            search_map = {}
                             for res in results:
                                 display_text = f"{res.get('name', 'Unknown')} - {res.get('email', 'No email')}"
                                 search_options.append(display_text)
                                 search_map[display_text] = res
                             
-                            selected_search_result = st.selectbox(
-                                "Select resume to view details", 
-                                options=search_options,
-                                key="search_selector"
-                            )
-                            
-                            if selected_search_result:
-                                st.json(search_map[selected_search_result])
+                            # Store search results and map in session state
+                            st.session_state.search_options = search_options
+                            st.session_state.search_map = search_map
                         else:
                             st.warning("No matching resumes found")
                 else:
                     st.warning("Please enter a search value")
+            
+            # Display search results if available
+            if "search_options" in st.session_state and st.session_state.search_options:
+                selected_search_result = st.selectbox(
+                    "Select resume to view details", 
+                    options=st.session_state.search_options,
+                    key="search_selector"
+                )
+                
+                if selected_search_result:
+                    selected_resume = st.session_state.search_map.get(selected_search_result)
+                    if selected_resume:
+                        st.json(selected_resume)
+
+                        # Add delete button with confirmation logic
+                        if "delete_confirmation" not in st.session_state:
+                            st.session_state.delete_confirmation = False
+
+                        if not st.session_state.delete_confirmation:
+                            if st.button("🗑️ Delete Resume", key="delete_button"):
+                                st.session_state.delete_confirmation = True
+                        else:
+                            # Simulate a pop-up-like experience
+                            with st.container():
+                                st.error("⚠️ Are you sure you want to delete this resume? This action cannot be undone.")
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    if st.button("Yes, Delete", key="confirm_delete_button"):
+                                        try:
+                                            db_manager.delete_resume({"_id": selected_resume["_id"]})
+                                            st.success(f"✅ Deleted resume: {selected_resume.get('name', 'Unknown')}")
+                                            # Refresh the results after deletion
+                                            st.session_state.all_resumes_results = db_manager.find({})
+                                            st.session_state.delete_confirmation = False  # Reset confirmation state
+                                        except Exception as e:
+                                            st.error(f"Error deleting resume: {e}")
+                                with col2:
+                                    if st.button("Cancel", key="cancel_delete_button"):
+                                        st.info("Deletion canceled.")
+                                        st.session_state.delete_confirmation = False  # Reset confirmation state
+                    else:
+                        st.error("Could not find the selected resume. Please try again.")
     except Exception as e:
         st.error(f"Error connecting to database: {e}")
-
 # # -------------------
 # # Page: Settings
 # # -------------------
@@ -521,4 +656,3 @@ elif page == "Database Management":
 #         st.success("config.py created!")
 #         st.code(config_content, language="python")
 
-    

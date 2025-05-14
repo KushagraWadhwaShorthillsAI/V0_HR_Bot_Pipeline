@@ -29,9 +29,7 @@ class ResumeDBManager:
             query = {"email": resume.get("email")}
         
         # If we have a valid query, try to upsert
-        if query:
-
-                
+        if query:                
             # Perform the upsert operation
             result = self.collection.replace_one(query, resume, upsert=True)
             
@@ -50,7 +48,7 @@ class ResumeDBManager:
             return result.inserted_id
         
     def bulk_insert(self, folder_path: str):
-        """Upsert all JSON files in a folder with UUIDs."""
+        """Upsert all JSON files in a folder using insert_or_update_resume logic."""
         folder = Path(folder_path)
         files = list(folder.glob("*.json"))
         print(f"📂 Found {len(files)} resumes to insert or update.\n")
@@ -61,10 +59,8 @@ class ResumeDBManager:
             try:
                 with open(file, "r", encoding="utf-8") as f:
                     doc = json.load(f)
-                if "id" not in doc:
-                    doc["id"] = str(uuid.uuid4())
-                self.collection.replace_one({"id": doc["id"]}, doc, upsert=True)
-                print(f"✅ Upserted: {doc.get('id', 'Unknown')} ({file.name})")
+                # Use the same logic as the single resume insertion
+                self.insert_or_update_resume(doc)
                 inserted += 1
             except Exception as e:
                 print(f"❌ Failed to upsert {file.name}: {e}")
