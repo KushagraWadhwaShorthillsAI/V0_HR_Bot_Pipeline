@@ -255,7 +255,6 @@ def validate_and_reprocess_resumes(uploaded_files):
 
             # Check if 'name' is missing
             if not resume_data.get("name") or len(resume_data.get("name").split()[0]) < 2:
-                st.warning(f"⚠️ Missing 'name' in {file_path.name}. Reprocessing...")
                 reprocessed_count += 1
 
                 # Find the original file in uploaded files
